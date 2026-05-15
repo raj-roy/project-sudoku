@@ -1,26 +1,32 @@
-import type { Board, Difficulty, IPuzzleGenerator, PuzzleResult } from '../types/sudoku'
+import type { Board, Difficulty, IPuzzleGenerator, IPuzzleValidator, PuzzleResult } from '../types/sudoku'
 import { BoardState } from './BoardState'
 import { SudokuSolver } from './SudokuSolver'
 import { getDifficultyStrategy } from './difficulty'
 
 export class SudokuGenerator implements IPuzzleGenerator {
-  private analyzer = new BoardState()
-  private validator = new SudokuSolver()
+  private readonly analyzer = new BoardState()
+  private readonly validator: IPuzzleValidator
+
+  // DIP: accept any IPuzzleValidator; default to SudokuSolver
+  constructor(validator: IPuzzleValidator = new SudokuSolver()) {
+    this.validator = validator
+  }
 
   generate(difficulty: Difficulty): Board {
     return this.generateWithSolution(difficulty).puzzle
   }
 
-  generateWithSolution(difficulty: Difficulty): PuzzleResult {
+  generateWithSolution(difficulty: Difficulty, deadlineMs = 1800): PuzzleResult {
+    const deadline = Date.now() + deadlineMs
     const solution = this.seedFullBoard()
-    const puzzle = this.removeCells(solution, difficulty)
+    const puzzle = this.removeCells(solution, difficulty, deadline)
     return { puzzle, solution }
   }
 
   private seedFullBoard(): Board {
-    const state = new BoardState()
-    const grid = state.get()
-    this.fillBoard(grid)
+    const grid: Board = Array.from({ length: 9 }, () => Array(9).fill(0))
+    const filled = this.fillBoard(grid)
+    if (!filled) throw new Error('Failed to seed a full board')
     return grid
   }
 
@@ -28,8 +34,7 @@ export class SudokuGenerator implements IPuzzleGenerator {
     for (let r = 0; r < 9; r++) {
       for (let c = 0; c < 9; c++) {
         if (grid[r][c] !== 0) continue
-        const nums = this.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])
-        for (const n of nums) {
+        for (const n of this.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) {
           if (!this.analyzer.isValidPlacement(grid, r, c, n)) continue
           grid[r][c] = n
           if (this.fillBoard(grid)) return true
@@ -41,7 +46,7 @@ export class SudokuGenerator implements IPuzzleGenerator {
     return true
   }
 
-  private removeCells(solution: Board, difficulty: Difficulty): Board {
+  private removeCells(solution: Board, difficulty: Difficulty, deadline: number): Board {
     const { clueCount } = getDifficultyStrategy(difficulty)
     const puzzle = solution.map(r => [...r])
     const cells = this.shuffle(
@@ -50,6 +55,8 @@ export class SudokuGenerator implements IPuzzleGenerator {
     let filled = 81
     for (const [r, c] of cells) {
       if (filled <= clueCount) break
+      if (Date.now() >= deadline) break   // performance ceiling — stop early, keep current state
+
       const backup = puzzle[r][c]
       puzzle[r][c] = 0
       if (!this.validator.hasUniqueSolution(puzzle)) {

@@ -8,6 +8,7 @@ export interface IDifficultyStrategy {
 
 export interface IPuzzleGenerator {
   generate(difficulty: Difficulty): Board
+  generateWithSolution(difficulty: Difficulty): PuzzleResult
 }
 
 export const SolutionCount = {
