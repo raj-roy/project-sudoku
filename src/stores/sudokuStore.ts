@@ -1,47 +1,41 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { Board, PuzzleResult } from '../types/sudoku'
+import type { Board, Difficulty, PuzzleResult } from '../types/sudoku'
 import rawSeedBank from '../data/seedBank.json'
 
 const WORKER_TIMEOUT_MS = 2000
+
+type SeedBank = Record<string, Board[]>
 
 type WorkerMessage =
   | { type: 'result'; payload: PuzzleResult }
   | { type: 'timeout' }
 
-function isValidSeedBank(data: unknown): data is Board[] {
-  return (
-    Array.isArray(data) &&
-    data.length > 0 &&
-    Array.isArray((data as Board[][])[0]) &&
-    (data as Board[][])[0].length === 9
-  )
-}
-
-function randomSeed(): Board {
-  if (!isValidSeedBank(rawSeedBank)) {
-    throw new Error('Seed bank is malformed or empty')
-  }
-  return rawSeedBank[Math.floor(Math.random() * rawSeedBank.length)] as Board
+function randomSeed(difficulty: Difficulty): Board {
+  const bank = rawSeedBank as SeedBank
+  const pool = bank[difficulty]
+  if (!Array.isArray(pool) || pool.length === 0)
+    throw new Error(`Seed bank missing for difficulty: ${difficulty}`)
+  return pool[Math.floor(Math.random() * pool.length)] as Board
 }
 
 export const useSudokuStore = defineStore('sudoku', () => {
-  const puzzle = ref<Board | null>(null)
-  const loading = ref(false)
-  const error = ref<string | null>(null)
+  const puzzle   = ref<Board | null>(null)
+  const loading  = ref(false)
+  const error    = ref<string | null>(null)
+  const difficulty = ref<Difficulty>('baby')
 
   async function generatePuzzle(): Promise<void> {
     loading.value = true
-    error.value = null
-    puzzle.value = null
+    error.value   = null
+    puzzle.value  = null
 
     try {
-      const result = await runWorker()
+      const result = await runWorker(difficulty.value)
       puzzle.value = result.puzzle
     } catch {
-      // Live generation timed out or failed — fall back to seed bank
       try {
-        puzzle.value = randomSeed()
+        puzzle.value = randomSeed(difficulty.value)
       } catch {
         error.value = "We couldn't load your puzzle. Please refresh the page."
       }
@@ -50,13 +44,12 @@ export const useSudokuStore = defineStore('sudoku', () => {
     }
   }
 
-  function runWorker(): Promise<PuzzleResult> {
+  function runWorker(diff: Difficulty): Promise<PuzzleResult> {
     return new Promise((resolve, reject) => {
       const worker = new Worker(
         new URL('../workers/generator.worker.ts', import.meta.url),
         { type: 'module' }
       )
-
       const timer = setTimeout(() => {
         worker.terminate()
         reject(new Error('timeout'))
@@ -68,16 +61,14 @@ export const useSudokuStore = defineStore('sudoku', () => {
         if (e.data.type === 'result') resolve(e.data.payload)
         else reject(new Error('timeout'))
       }
-
       worker.onerror = () => {
         clearTimeout(timer)
         worker.terminate()
         reject(new Error('worker error'))
       }
-
-      worker.postMessage(null)
+      worker.postMessage({ difficulty: diff })
     })
   }
 
-  return { puzzle, loading, error, generatePuzzle }
+  return { puzzle, loading, error, difficulty, generatePuzzle }
 })

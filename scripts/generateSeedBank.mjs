@@ -3,17 +3,23 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const TARGET = 50
-const CLUE_TARGET = 37
+const TARGET_PER_DIFFICULTY = 50
 
-// ── inline engine (no TS imports from src/) ──────────────────────────────────
+const DIFFICULTIES = [
+  { value: 'baby',     clueCount: 52, clueMin: 50, clueMax: 55 },
+  { value: 'kid',      clueCount: 45, clueMin: 41, clueMax: 49 },
+  { value: 'teen',     clueCount: 36, clueMin: 32, clueMax: 40 },
+  { value: 'adult',    clueCount: 27, clueMin: 24, clueMax: 31 },
+  { value: 'einstein', clueCount: 24, clueMin: 22, clueMax: 28 },
+]
+
+// ── inline engine ────────────────────────────────────────────────────────────
 
 function isValid(grid, row, col, num) {
   for (let i = 0; i < 9; i++) {
     if (grid[row][i] === num || grid[i][col] === num) return false
   }
-  const br = Math.floor(row / 3) * 3
-  const bc = Math.floor(col / 3) * 3
+  const br = Math.floor(row / 3) * 3, bc = Math.floor(col / 3) * 3
   for (let r = br; r < br + 3; r++)
     for (let c = bc; c < bc + 3; c++)
       if (grid[r][c] === num) return false
@@ -44,7 +50,6 @@ function fillBoard(grid) {
   return true
 }
 
-/** Counts solutions, capped at 2 for performance. */
 function countSolutions(grid) {
   let count = 0
   function bt(g) {
@@ -67,71 +72,68 @@ function countSolutions(grid) {
   return count
 }
 
-function generatePuzzle() {
+function generatePuzzle(clueCount) {
   const solution = Array.from({ length: 9 }, () => Array(9).fill(0))
   if (!fillBoard(solution)) throw new Error('fillBoard failed')
-
   const puzzle = solution.map(r => [...r])
   const cells = shuffle(Array.from({ length: 81 }, (_, i) => [Math.floor(i / 9), i % 9]))
   let filled = 81
-
   for (const [r, c] of cells) {
-    if (filled <= CLUE_TARGET) break
+    if (filled <= clueCount) break
     const backup = puzzle[r][c]
     puzzle[r][c] = 0
     if (countSolutions(puzzle) !== 1) puzzle[r][c] = backup
     else filled--
   }
-
-  return puzzle   // solution omitted — saves ~50% bundle size; derivable at runtime if needed
+  return puzzle
 }
 
-/** Validate a generated puzzle has exactly one solution and correct clue count. */
-function validate(puzzle) {
+function validate(puzzle, clueMin, clueMax) {
   const clues = puzzle.flat().filter(v => v !== 0).length
-  if (clues < 35 || clues > 45) return `clue count out of range: ${clues}`
+  if (clues < clueMin || clues > clueMax) return `clue count ${clues} outside [${clueMin}, ${clueMax}]`
   if (countSolutions(puzzle) !== 1) return 'does not have exactly one solution'
   return null
 }
 
 // ── generation loop ───────────────────────────────────────────────────────────
 
-console.log(`Generating ${TARGET} seed puzzles (difficulty: medium, target clues: ${CLUE_TARGET})...\n`)
+const bank = {}
+let totalFailures = 0
+const globalStart = Date.now()
 
-const puzzles = []
-let failures = 0
-const start = Date.now()
+for (const diff of DIFFICULTIES) {
+  console.log(`\n[${diff.value}] Generating ${TARGET_PER_DIFFICULTY} puzzles (target clues: ${diff.clueCount})...`)
+  const puzzles = []
+  let failures = 0
 
-for (let i = 0; i < TARGET; i++) {
-  const t0 = Date.now()
-  const puzzle = generatePuzzle()
-  const err = validate(puzzle)
-  const ms = Date.now() - t0
-
-  if (err) {
-    console.error(`  [${i + 1}] FAILED validation: ${err}`)
-    failures++
-  } else {
-    const clues = puzzle.flat().filter(v => v !== 0).length
-    process.stdout.write(`  [${i + 1}/${TARGET}] ✓  clues=${clues}  ${ms}ms\n`)
-    puzzles.push(puzzle)
+  for (let i = 0; puzzles.length < TARGET_PER_DIFFICULTY; i++) {
+    const t0 = Date.now()
+    const puzzle = generatePuzzle(diff.clueCount)
+    const err = validate(puzzle, diff.clueMin, diff.clueMax)
+    const ms = Date.now() - t0
+    if (err) {
+      failures++
+    } else {
+      const clues = puzzle.flat().filter(v => v !== 0).length
+      process.stdout.write(`  [${puzzles.length + 1}/${TARGET_PER_DIFFICULTY}] ✓  clues=${clues}  ${ms}ms\n`)
+      puzzles.push(puzzle)
+    }
   }
+
+  console.log(`  → ${puzzles.length} valid, ${failures} failed`)
+  totalFailures += failures
+  bank[diff.value] = puzzles
 }
 
-const elapsed = ((Date.now() - start) / 1000).toFixed(1)
-console.log(`\nCompleted in ${elapsed}s — ${puzzles.length} valid, ${failures} failed.`)
+const elapsed = ((Date.now() - globalStart) / 1000).toFixed(1)
+console.log(`\nCompleted in ${elapsed}s — total failures: ${totalFailures}`)
 
-if (failures > 0) {
-  console.error(`\nAborting: ${failures} puzzle(s) failed validation. Fix the generator before bundling.`)
-  process.exit(1)
-}
-
-if (puzzles.length < TARGET) {
-  console.error(`\nAborting: only ${puzzles.length}/${TARGET} puzzles generated.`)
+if (totalFailures > 0) {
+  console.error('Aborting: fix the generator before bundling.')
   process.exit(1)
 }
 
 const outPath = resolve(__dirname, '../src/data/seedBank.json')
-writeFileSync(outPath, JSON.stringify(puzzles))
-console.log(`\nWritten ${puzzles.length} puzzles → ${outPath}`)
+writeFileSync(outPath, JSON.stringify(bank))
+console.log(`\nWritten → ${outPath}`)
 console.log(`File size: ${(statSync(outPath).size / 1024).toFixed(1)} KB`)

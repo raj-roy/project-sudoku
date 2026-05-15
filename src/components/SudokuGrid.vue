@@ -5,21 +5,20 @@ import { storeToRefs } from 'pinia'
 const store = useSudokuStore()
 const { puzzle, loading, error } = storeToRefs(store)
 
-function boxBorderRight(col: number) { return col === 2 || col === 5 }
+function boxBorderRight(col: number)  { return col === 2 || col === 5 }
 function boxBorderBottom(row: number) { return row === 2 || row === 5 }
 </script>
 
 <template>
   <div class="flex flex-col items-center gap-8 p-6 select-none">
-    <h1 class="text-3xl font-bold tracking-widest uppercase text-gray-800">Sudoku</h1>
 
     <!-- Error state -->
-    <p v-if="error" class="text-red-600 text-sm text-center max-w-xs font-medium">
+    <p v-if="error" class="screen-only text-red-600 text-sm text-center max-w-xs font-medium">
       {{ error }}
     </p>
 
-    <!-- Loading: CSS skeleton table -->
-    <table v-else-if="loading" class="sudoku-table" aria-label="Loading puzzle">
+    <!-- Loading: CSS skeleton table — hidden entirely in print -->
+    <table v-else-if="loading" class="sudoku-table screen-only" aria-label="Loading puzzle">
       <tbody>
         <tr v-for="row in 9" :key="row">
           <td
@@ -35,12 +34,12 @@ function boxBorderBottom(row: number) { return row === 2 || row === 5 }
       </tbody>
     </table>
 
-    <!-- Success: rendered puzzle table -->
     <!--
       Using <table> over CSS Grid:
       - Semantic row/column structure aids screen readers and print stylesheets
-      - Print media queries can target <thead>/<tbody>/<tr>/<td> natively
+      - Print media queries target <tr>/<td> natively without extra overrides
       - Consistent cell sizing without explicit grid-template-columns
+      - border-collapse on <table> guarantees shared borders render as single lines in print
     -->
     <table v-else-if="puzzle" class="sudoku-table" aria-label="Sudoku puzzle">
       <tbody>
@@ -62,22 +61,21 @@ function boxBorderBottom(row: number) { return row === 2 || row === 5 }
       </tbody>
     </table>
 
-    <button
-      :disabled="loading || !!error"
-      class="px-6 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      @click="store.generatePuzzle()"
-    >
-      {{ loading ? 'Generating…' : 'New Puzzle' }}
-    </button>
   </div>
 </template>
 
 <style scoped>
+/* ── Screen utility classes ─────────────────────────────────────────── */
+.screen-only { }
+.print-only  { display: none; }
+
+/* ── Table base ─────────────────────────────────────────────────────── */
 .sudoku-table {
   border-collapse: collapse;
   border: 3px solid #333;
 }
 
+/* ── Cell base ──────────────────────────────────────────────────────── */
 .sudoku-cell {
   width: 48px;
   height: 48px;
@@ -88,26 +86,29 @@ function boxBorderBottom(row: number) { return row === 2 || row === 5 }
   vertical-align: middle;
   cursor: default;
   pointer-events: none;
-  font-size: 1.125rem; /* 18px */
+  font-size: 1.125rem;
   background: #fff;
+  padding: 0;
 }
 
+/* ── Box borders (border-only — no background used for structure) ───── */
 .box-border-right  { border-right:  3px solid #333; }
 .box-border-bottom { border-bottom: 3px solid #333; }
 
-/* Clue cells: bold, dark number on white */
+/* ── Clue cells ─────────────────────────────────────────────────────── */
 .cell-clue {
   font-weight: 700;
   color: #1a1a1a;
-  background: #fff;
+  background: #f3f4f6; /* subtle on-screen distinction; stripped in print by default */
 }
 
-/* Empty cells: plain white, no content */
+/* ── Empty cells ────────────────────────────────────────────────────── */
 .cell-empty {
+  font-weight: 400;
   background: #fff;
 }
 
-/* Skeleton pulse animation */
+/* ── Skeleton ───────────────────────────────────────────────────────── */
 .skeleton-cell {
   background: #e5e7eb;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -116,5 +117,51 @@ function boxBorderBottom(row: number) { return row === 2 || row === 5 }
 @keyframes skeleton-pulse {
   0%, 100% { background: #e5e7eb; }
   50%       { background: #d1d5db; }
+}
+
+/* ── Print styles ───────────────────────────────────────────────────── */
+@media print {
+  /* Hide all screen-only UI */
+  .screen-only { display: none !important; }
+
+  /* Show print-only elements */
+  .print-only  { display: block; }
+
+  .print-title {
+    font-size: 18pt;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 12pt;
+    color: #000;
+    font-family: serif;
+  }
+
+  /* Size grid to ~180mm — fits within A4 (210mm) and Letter (216mm) margins */
+  .sudoku-table {
+    width: 180mm;
+    height: 180mm;
+    border: 3px solid #000;
+    page-break-inside: avoid;
+  }
+
+  .sudoku-cell {
+    /* Let the table distribute 180mm across 9 columns evenly */
+    width: auto;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    border: 1px solid #555;
+    font-size: 14pt;
+    /* Background suppressed by browser default — intentional per spec */
+    background: transparent;
+    color: #000;
+  }
+
+  /* Clue distinction in print: bold weight only — no background dependency */
+  .cell-clue  { font-weight: 700; }
+  .cell-empty { font-weight: 400; }
+
+  .box-border-right  { border-right:  3px solid #000; }
+  .box-border-bottom { border-bottom: 3px solid #000; }
 }
 </style>
