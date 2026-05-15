@@ -10,7 +10,15 @@ export interface IPuzzleGenerator {
   generate(difficulty: Difficulty): Board
 }
 
+export const SolutionCount = {
+  None: 0,
+  One: 1,
+  Multiple: 2,
+} as const
+export type SolutionCount = typeof SolutionCount[keyof typeof SolutionCount]
+
 export interface IPuzzleValidator {
+  countSolutions(board: Board): SolutionCount
   hasUniqueSolution(board: Board): boolean
 }
 
