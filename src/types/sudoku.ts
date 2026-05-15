@@ -1,0 +1,33 @@
+export type Board = number[][]
+
+export type Difficulty = 'medium'
+
+export interface IDifficultyStrategy {
+  readonly clueCount: number
+}
+
+export interface IPuzzleGenerator {
+  generate(difficulty: Difficulty): Board
+  generateWithSolution(difficulty: Difficulty): PuzzleResult
+}
+
+export const SolutionCount = {
+  None: 0,
+  One: 1,
+  Multiple: 2,
+} as const
+export type SolutionCount = typeof SolutionCount[keyof typeof SolutionCount]
+
+export interface IPuzzleValidator {
+  countSolutions(board: Board): SolutionCount
+  hasUniqueSolution(board: Board): boolean
+}
+
+export interface IBoardAnalyzer {
+  isValidPlacement(board: Board, row: number, col: number, num: number): boolean
+}
+
+export interface PuzzleResult {
+  puzzle: Board
+  solution: Board
+}

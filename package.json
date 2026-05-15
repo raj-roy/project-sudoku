@@ -1,0 +1,32 @@
+{
+  "name": "temp-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "generate:seeds": "node scripts/generateSeedBank.mjs",
+    "prebuild": "node scripts/generateSeedBank.mjs",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5.34"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "@vue/test-utils": "^2.4.10",
+    "@vue/tsconfig": "^0.9.1",
+    "autoprefixer": "^10.5.0",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^4.3.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.12",
+    "vitest": "^4.1.6",
+    "vue-tsc": "^3.2.8"
+  }
+}
