@@ -1,20 +1,32 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Board, PuzzleResult } from '../types/sudoku'
-import seedBank from '../data/seedBank.json'
+import rawSeedBank from '../data/seedBank.json'
+
+const WORKER_TIMEOUT_MS = 2000
 
 type WorkerMessage =
   | { type: 'result'; payload: PuzzleResult }
   | { type: 'timeout' }
 
-function randomSeed(): PuzzleResult {
-  const seeds = seedBank as PuzzleResult[]
-  return seeds[Math.floor(Math.random() * seeds.length)]
+function isValidSeedBank(data: unknown): data is Board[] {
+  return (
+    Array.isArray(data) &&
+    data.length > 0 &&
+    Array.isArray((data as Board[][])[0]) &&
+    (data as Board[][])[0].length === 9
+  )
+}
+
+function randomSeed(): Board {
+  if (!isValidSeedBank(rawSeedBank)) {
+    throw new Error('Seed bank is malformed or empty')
+  }
+  return rawSeedBank[Math.floor(Math.random() * rawSeedBank.length)] as Board
 }
 
 export const useSudokuStore = defineStore('sudoku', () => {
   const puzzle = ref<Board | null>(null)
-  const solution = ref<Board | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -22,17 +34,14 @@ export const useSudokuStore = defineStore('sudoku', () => {
     loading.value = true
     error.value = null
     puzzle.value = null
-    solution.value = null
 
     try {
       const result = await runWorker()
       puzzle.value = result.puzzle
-      solution.value = result.solution
     } catch {
+      // Live generation timed out or failed — fall back to seed bank
       try {
-        const fallback = randomSeed()
-        puzzle.value = fallback.puzzle
-        solution.value = fallback.solution
+        puzzle.value = randomSeed()
       } catch {
         error.value = "We couldn't load your puzzle. Please refresh the page."
       }
@@ -47,10 +56,11 @@ export const useSudokuStore = defineStore('sudoku', () => {
         new URL('../workers/generator.worker.ts', import.meta.url),
         { type: 'module' }
       )
+
       const timer = setTimeout(() => {
         worker.terminate()
         reject(new Error('timeout'))
-      }, 2000)
+      }, WORKER_TIMEOUT_MS)
 
       worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
         clearTimeout(timer)
@@ -69,5 +79,5 @@ export const useSudokuStore = defineStore('sudoku', () => {
     })
   }
 
-  return { puzzle, solution, loading, error, generatePuzzle }
+  return { puzzle, loading, error, generatePuzzle }
 })

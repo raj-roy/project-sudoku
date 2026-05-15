@@ -4,18 +4,18 @@ import type { PuzzleResult } from '../types/sudoku'
 const generator = new SudokuGenerator()
 
 self.onmessage = () => {
-  const deadline = Date.now() + 2000
+  const DEADLINE_MS = 1800  // 200ms headroom before the store's 2s hard kill
   let result: PuzzleResult | null = null
 
   try {
-    result = generator.generateWithSolution('medium')
+    result = generator.generateWithSolution('medium', DEADLINE_MS)
   } catch {
-    // generation failed
+    // seedFullBoard failed — store will fall back to seed bank
   }
 
-  if (!result || Date.now() > deadline) {
-    self.postMessage({ type: 'timeout' })
-  } else {
+  if (result) {
     self.postMessage({ type: 'result', payload: result })
+  } else {
+    self.postMessage({ type: 'timeout' })
   }
 }
