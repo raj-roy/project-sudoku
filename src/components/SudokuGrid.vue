@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, nextTick } from 'vue'
 import { useSudokuStore } from '../stores/sudokuStore'
 import { storeToRefs } from 'pinia'
 
 const store = useSudokuStore()
-const { puzzle, userGrid, selectedCell, loading, error } = storeToRefs(store)
+const { puzzle, cellGrid, selectedCell, loading, error, isGameOver } = storeToRefs(store)
 
-// Template ref map: cellRefs[r][c] → <td> element
 const cellRefs = ref<(HTMLTableCellElement | null)[][]>(
   Array.from({ length: 9 }, () => Array(9).fill(null))
 )
@@ -21,40 +20,47 @@ function isClue(r: number, c: number): boolean {
 
 function displayValue(r: number, c: number): string {
   if (isClue(r, c)) return String(puzzle.value![r][c])
-  const v = userGrid.value[r][c]
+  const v = cellGrid.value[r][c].value
   return v !== null ? String(v) : ''
 }
 
-const selected = computed(() => selectedCell.value)
+function isLocked(r: number, c: number): boolean {
+  return isClue(r, c) || isGameOver.value
+}
 
 function isSelected(r: number, c: number): boolean {
-  return selected.value?.[0] === r && selected.value?.[1] === c
+  return selectedCell.value?.[0] === r && selectedCell.value?.[1] === c
 }
 
 // ── Interaction ──────────────────────────────────────────────────────────────
 
 function onCellClick(r: number, c: number) {
-  if (isClue(r, c)) return
+  if (isLocked(r, c)) return
   selectedCell.value = [r, c]
   nextTick(() => cellRefs.value[r][c]?.focus())
 }
 
 function onKeydown(e: KeyboardEvent, r: number, c: number) {
-  if (isClue(r, c)) return
+  if (isLocked(r, c)) return
 
   if (e.key >= '1' && e.key <= '9') {
     e.preventDefault()
-    store.setCell(r, c, Number(e.key))
+    store.setPending(r, c, Number(e.key))
     return
   }
 
   if (e.key === 'Backspace' || e.key === 'Delete') {
     e.preventDefault()
-    store.setCell(r, c, null)
+    store.setPending(r, c, null)
     return
   }
 
-  // Arrow key navigation — stop at grid boundaries, no wrap
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    store.commitCell(r, c)
+    return
+  }
+
   const moves: Record<string, [number, number]> = {
     ArrowUp:    [-1,  0],
     ArrowDown:  [ 1,  0],
@@ -63,29 +69,31 @@ function onKeydown(e: KeyboardEvent, r: number, c: number) {
   }
   if (moves[e.key]) {
     e.preventDefault()
+    store.commitCell(r, c)   // commit before moving
     const [dr, dc] = moves[e.key]
-    const nr = Math.max(0, Math.min(8, r + dr))
-    const nc = Math.max(0, Math.min(8, c + dc))
-    moveFocus(nr, nc)
+    moveFocus(Math.max(0, Math.min(8, r + dr)), Math.max(0, Math.min(8, c + dc)))
   }
 }
 
-// Tab/Shift+Tab: skip clue cells, exit grid naturally at boundaries
 function onTab(e: KeyboardEvent, r: number, c: number) {
   const emptyCells = getEmptyCellsInOrder()
   const idx = emptyCells.findIndex(([er, ec]) => er === r && ec === c)
 
+  store.commitCell(r, c)   // commit before tabbing away
+
   if (!e.shiftKey) {
-    if (idx === emptyCells.length - 1) return // let Tab exit the grid
+    if (idx === emptyCells.length - 1) return
     e.preventDefault()
-    const [nr, nc] = emptyCells[idx + 1]
-    moveFocus(nr, nc)
+    moveFocus(...emptyCells[idx + 1])
   } else {
-    if (idx === 0) return // let Shift+Tab exit the grid
+    if (idx === 0) return
     e.preventDefault()
-    const [nr, nc] = emptyCells[idx - 1]
-    moveFocus(nr, nc)
+    moveFocus(...emptyCells[idx - 1])
   }
+}
+
+function onBlur(r: number, c: number) {
+  store.commitCell(r, c)
 }
 
 function getEmptyCellsInOrder(): [number, number][] {
@@ -106,17 +114,16 @@ function boxBorderBottom(row: number) { return row === 2 || row === 5 }
 
 function ariaLabel(r: number, c: number): string {
   if (isClue(r, c)) return `Row ${r + 1}, Column ${c + 1}, clue ${puzzle.value![r][c]}`
-  const v = userGrid.value[r][c]
-  return v !== null
-    ? `Row ${r + 1}, Column ${c + 1}, ${v}`
-    : `Row ${r + 1}, Column ${c + 1}, empty`
+  const { value, status } = cellGrid.value[r][c]
+  if (value === null) return `Row ${r + 1}, Column ${c + 1}, empty`
+  const statusLabel = status === 'incorrect' ? ', incorrect' : status === 'pending' ? ', pending' : ''
+  return `Row ${r + 1}, Column ${c + 1}, ${value}${statusLabel}`
 }
 </script>
 
 <template>
   <div class="flex flex-col items-center gap-4 select-none">
 
-    <!-- Error state -->
     <p v-if="error" class="screen-only text-red-600 text-sm text-center max-w-xs font-medium">
       {{ error }}
     </p>
@@ -155,21 +162,26 @@ function ariaLabel(r: number, c: number): string {
             :key="c"
             :ref="(el) => setCellRef(el as HTMLTableCellElement | null, r, c)"
             role="gridcell"
-            :tabindex="isClue(r, c) ? -1 : 0"
-            :aria-readonly="isClue(r, c) ? 'true' : undefined"
+            :tabindex="isLocked(r, c) ? -1 : 0"
+            :aria-readonly="isLocked(r, c) ? 'true' : undefined"
             :aria-label="ariaLabel(r, c)"
             :aria-selected="isSelected(r, c)"
+            :aria-invalid="cellGrid[r][c].status === 'incorrect' ? 'true' : undefined"
             class="sudoku-cell"
             :class="{
               'box-border-right':  boxBorderRight(c),
               'box-border-bottom': boxBorderBottom(r),
               'cell-clue':         isClue(r, c),
-              'cell-empty':        !isClue(r, c) && userGrid[r][c] === null,
-              'cell-user':         !isClue(r, c) && userGrid[r][c] !== null,
+              'cell-empty':        !isClue(r, c) && cellGrid[r][c].status === 'empty',
+              'cell-pending':      cellGrid[r][c].status === 'pending',
+              'cell-correct':      cellGrid[r][c].status === 'correct',
+              'cell-incorrect':    cellGrid[r][c].status === 'incorrect',
+              'cell-revealed':     cellGrid[r][c].status === 'revealed',
               'cell-selected':     isSelected(r, c),
             }"
-            :inputmode="isClue(r, c) ? undefined : 'numeric'"
+            :inputmode="isLocked(r, c) ? undefined : 'numeric'"
             @click="onCellClick(r, c)"
+            @blur="onBlur(r, c)"
             @keydown.tab.exact="onTab($event, r, c)"
             @keydown.shift.tab.exact="onTab($event, r, c)"
             @keydown="onKeydown($event, r, c)"
@@ -184,13 +196,11 @@ function ariaLabel(r: number, c: number): string {
 </template>
 
 <style scoped>
-/* ── Table ──────────────────────────────────────────────────────────── */
 .sudoku-table {
   border-collapse: collapse;
   border: 3px solid #333;
 }
 
-/* ── Cell base ──────────────────────────────────────────────────────── */
 .sudoku-cell {
   width: 48px;
   height: 48px;
@@ -203,24 +213,21 @@ function ariaLabel(r: number, c: number): string {
   font-size: 1.125rem;
   background: #fff;
   cursor: default;
-  /* Custom focus ring — never suppressed */
   outline: 3px solid transparent;
   outline-offset: -3px;
   transition: background 0.1s, outline-color 0.1s;
 }
 
-/* Keyboard / programmatic focus ring — WCAG AA 3:1 against white and light-blue */
 .sudoku-cell:focus-visible {
   outline: 3px solid #0047AB;
   outline-offset: -3px;
   z-index: 1;
 }
 
-/* ── Box borders ────────────────────────────────────────────────────── */
 .box-border-right  { border-right:  3px solid #333; }
 .box-border-bottom { border-bottom: 3px solid #333; }
 
-/* ── Clue cells: bold black, light grey bg, not interactive ─────────── */
+/* Clue: bold black on light grey */
 .cell-clue {
   font-weight: 700;
   color: #1a1a1a;
@@ -228,26 +235,54 @@ function ariaLabel(r: number, c: number): string {
   cursor: default;
 }
 
-/* ── Empty user cells ───────────────────────────────────────────────── */
+/* Empty: plain white, pointer cursor */
 .cell-empty {
   cursor: pointer;
   background: #fff;
 }
 
-/* ── User-entered value: blue, normal weight ────────────────────────── */
-.cell-user {
+/* Pending: italic blue — visually neutral, signals "not yet confirmed" */
+.cell-pending {
   cursor: pointer;
+  font-style: italic;
   font-weight: 500;
   color: #2563EB;
   background: #fff;
 }
 
-/* ── Selected cell highlight (mouse click or programmatic) ──────────── */
-.cell-selected {
-  background: #DBEAFE !important; /* light blue — distinct from focus ring */
+/* Committed correct: solid blue, upright */
+.cell-correct {
+  cursor: pointer;
+  font-style: normal;
+  font-weight: 500;
+  color: #2563EB;
+  background: #fff;
 }
 
-/* ── Skeleton ───────────────────────────────────────────────────────── */
+/* Committed incorrect: red */
+.cell-incorrect {
+  cursor: pointer;
+  font-style: normal;
+  font-weight: 600;
+  color: #DC2626;
+  background: #fff;
+}
+
+/* Solution revealed on game over: italic grey */
+.cell-revealed {
+  cursor: default;
+  font-style: italic;
+  font-weight: 400;
+  color: #9CA3AF;
+  background: #fff;
+}
+
+/* Selected highlight — sits on top of all cell states */
+.cell-selected {
+  background: #DBEAFE !important;
+}
+
+/* Skeleton */
 .skeleton-cell {
   background: #e5e7eb;
   animation: skeleton-pulse 1.4s ease-in-out infinite;
@@ -258,7 +293,7 @@ function ariaLabel(r: number, c: number): string {
   50%       { background: #d1d5db; }
 }
 
-/* ── Print ──────────────────────────────────────────────────────────── */
+/* Print */
 @media print {
   .screen-only { display: none !important; }
 
@@ -278,14 +313,12 @@ function ariaLabel(r: number, c: number): string {
     font-size: 14pt;
     background: transparent;
     color: #000;
-    outline: none; /* safe in print — no interactive focus needed */
+    font-style: normal;
+    outline: none;
   }
 
-  .cell-clue        { font-weight: 700; }
-  .cell-empty,
-  .cell-user        { font-weight: 400; }
-  .cell-user        { color: #000; } /* print in black regardless */
-  .cell-selected    { background: transparent !important; }
+  .cell-clue     { font-weight: 700; }
+  .cell-selected { background: transparent !important; }
 
   .box-border-right  { border-right:  3px solid #000; }
   .box-border-bottom { border-bottom: 3px solid #000; }
