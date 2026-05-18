@@ -1,6 +1,14 @@
 export type Board = number[][]
 
-export type Difficulty = 'medium'
+export type Difficulty = 'baby' | 'kid' | 'teen' | 'adult' | 'einstein'
+
+export interface DifficultyMeta {
+  value: Difficulty
+  label: string        // e.g. "Baby"
+  sublabel: string     // e.g. "Very Easy"
+  clueMin: number
+  clueMax: number
+}
 
 export interface IDifficultyStrategy {
   readonly clueCount: number
