@@ -21,6 +21,23 @@ export class SudokuSolver implements IPuzzleValidator {
     return this.countSolutions(board) === SolutionCount.One
   }
 
+  /** Fills `grid` in-place with the first valid solution. Returns true if solved. */
+  solve(grid: Board): boolean {
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (grid[r][c] !== 0) continue
+        for (let n = 1; n <= 9; n++) {
+          if (!this.analyzer.isValidPlacement(grid, r, c, n)) continue
+          grid[r][c] = n
+          if (this.solve(grid)) return true
+          grid[r][c] = 0
+        }
+        return false
+      }
+    }
+    return true
+  }
+
   /**
    * Finds the first empty cell, tries digits 1–9, recurses.
    * Returns as soon as `count` reaches 2 to avoid unnecessary work.
