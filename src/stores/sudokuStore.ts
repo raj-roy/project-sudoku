@@ -1,12 +1,11 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { Board, Difficulty, PuzzleResult } from '../types/sudoku'
+import { ref, watch } from 'vue'
+import type { Board, Difficulty, PuzzleResult, UserGrid } from '../types/sudoku'
 import rawSeedBank from '../data/seedBank.json'
 
 const WORKER_TIMEOUT_MS = 2000
 
 type SeedBank = Record<string, Board[]>
-
 type WorkerMessage =
   | { type: 'result'; payload: PuzzleResult }
   | { type: 'timeout' }
@@ -19,16 +18,32 @@ function randomSeed(difficulty: Difficulty): Board {
   return pool[Math.floor(Math.random() * pool.length)] as Board
 }
 
+function emptyUserGrid(): UserGrid {
+  return Array.from({ length: 9 }, () => Array(9).fill(null))
+}
+
 export const useSudokuStore = defineStore('sudoku', () => {
-  const puzzle   = ref<Board | null>(null)
-  const loading  = ref(false)
-  const error    = ref<string | null>(null)
-  const difficulty = ref<Difficulty>('baby')
+  const puzzle       = ref<Board | null>(null)
+  const userGrid     = ref<UserGrid>(emptyUserGrid())
+  const selectedCell = ref<[number, number] | null>(null)
+  const loading      = ref(false)
+  const error        = ref<string | null>(null)
+  const difficulty   = ref<Difficulty>('baby')
+
+  // Reset user entries whenever a new puzzle is loaded
+  watch(puzzle, () => { userGrid.value = emptyUserGrid() })
+
+  function setCell(row: number, col: number, value: number | null): void {
+    // Clue cells are immutable — structural guard
+    if (puzzle.value?.[row][col] !== 0) return
+    userGrid.value[row][col] = value
+  }
 
   async function generatePuzzle(): Promise<void> {
-    loading.value = true
-    error.value   = null
-    puzzle.value  = null
+    loading.value      = true
+    error.value        = null
+    puzzle.value       = null
+    selectedCell.value = null
 
     try {
       const result = await runWorker(difficulty.value)
@@ -70,5 +85,5 @@ export const useSudokuStore = defineStore('sudoku', () => {
     })
   }
 
-  return { puzzle, loading, error, difficulty, generatePuzzle }
+  return { puzzle, userGrid, selectedCell, loading, error, difficulty, setCell, generatePuzzle }
 })
