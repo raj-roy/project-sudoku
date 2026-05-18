@@ -1,4 +1,5 @@
 export type Board = number[][]
+export type UserGrid = (number | null)[][]
 
 export type Difficulty = 'baby' | 'kid' | 'teen' | 'adult' | 'einstein'
 
