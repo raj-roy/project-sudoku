@@ -7,7 +7,7 @@ const { mistakes, mistakeLimit } = storeToRefs(useSudokuStore())
 
 // Warning when one mistake away from game over
 const isWarning = computed(() =>
-  mistakeLimit.value !== null && mistakes.value === mistakeLimit.value
+  mistakeLimit.value !== null && mistakes.value === mistakeLimit.value - 1
 )
 </script>
 

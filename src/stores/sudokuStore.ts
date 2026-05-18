@@ -47,8 +47,18 @@ export const useSudokuStore = defineStore('sudoku', () => {
 
   const mistakeLimit = computed(() => getDifficultyStrategy(difficulty.value).mistakeLimit)
   const isGameOver   = computed(() =>
-    mistakeLimit.value !== null && mistakes.value > mistakeLimit.value
+    mistakeLimit.value !== null &&
+    (mistakeLimit.value > 0 ? mistakes.value >= mistakeLimit.value : mistakes.value > 0)
   )
+
+  function clearPuzzle() {
+    puzzle.value = null
+    solution.value = null
+    cellGrid.value = emptyCellGrid()
+    gameOverVisible.value = false
+    mistakes.value = 0
+    solved.value = false
+  }
 
   watch(puzzle, () => {
     cellGrid.value           = emptyCellGrid()
@@ -168,7 +178,7 @@ export const useSudokuStore = defineStore('sudoku', () => {
   return {
     puzzle, solution, cellGrid, selectedCell,
     loading, error, difficulty, isSolved, mistakes, mistakeLimit, isGameOver,
-    gameOverVisible, showDifficultySelector,
+    gameOverVisible, clearPuzzle,
     setPending, commitCell, generatePuzzle,
   }
 })

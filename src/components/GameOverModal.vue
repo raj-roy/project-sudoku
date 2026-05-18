@@ -26,7 +26,7 @@ function tryAgain() {
 
 function changeDifficulty() {
   collapsed.value = false
-  store.generatePuzzle()
+  store.clearPuzzle()
 }
 
 function studyBoard() {
