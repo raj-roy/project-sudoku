@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { Board, Difficulty, PuzzleResult, UserGrid } from '../types/sudoku'
+import { SudokuSolver } from '../engine/SudokuSolver'
 import rawSeedBank from '../data/seedBank.json'
 
 const WORKER_TIMEOUT_MS = 2000
@@ -18,39 +19,69 @@ function randomSeed(difficulty: Difficulty): Board {
   return pool[Math.floor(Math.random() * pool.length)] as Board
 }
 
+/** Solve a puzzle once to get its canonical solution (used for seed bank fallbacks only). */
+function deriveSolution(puzzle: Board): Board {
+  const solver = new SudokuSolver()
+  const grid = puzzle.map(r => [...r])
+  solver.solve(grid)
+  return grid
+}
+
 function emptyUserGrid(): UserGrid {
   return Array.from({ length: 9 }, () => Array(9).fill(null))
 }
 
 export const useSudokuStore = defineStore('sudoku', () => {
   const puzzle       = ref<Board | null>(null)
+  const solution     = ref<Board | null>(null)
   const userGrid     = ref<UserGrid>(emptyUserGrid())
   const selectedCell = ref<[number, number] | null>(null)
   const loading      = ref(false)
   const error        = ref<string | null>(null)
   const difficulty   = ref<Difficulty>('baby')
+  const solved       = ref(false)
 
-  // Reset user entries whenever a new puzzle is loaded
-  watch(puzzle, () => { userGrid.value = emptyUserGrid() })
+  // Reset user state whenever a new puzzle is loaded
+  watch(puzzle, () => {
+    userGrid.value = emptyUserGrid()
+    solved.value   = false
+  })
 
   function setCell(row: number, col: number, value: number | null): void {
-    // Clue cells are immutable — structural guard
     if (puzzle.value?.[row][col] !== 0) return
     userGrid.value[row][col] = value
+    checkCompletion()
   }
+
+  function checkCompletion(): void {
+    if (!puzzle.value || !solution.value || solved.value) return
+    for (let r = 0; r < 9; r++)
+      for (let c = 0; c < 9; c++) {
+        const expected = solution.value[r][c]
+        const actual   = puzzle.value[r][c] !== 0 ? puzzle.value[r][c] : userGrid.value[r][c]
+        if (actual !== expected) return   // not complete or incorrect
+      }
+    solved.value = true
+  }
+
+  const isSolved = computed(() => solved.value)
 
   async function generatePuzzle(): Promise<void> {
     loading.value      = true
     error.value        = null
     puzzle.value       = null
+    solution.value     = null
     selectedCell.value = null
 
     try {
       const result = await runWorker(difficulty.value)
-      puzzle.value = result.puzzle
+      puzzle.value   = result.puzzle
+      solution.value = result.solution
     } catch {
       try {
-        puzzle.value = randomSeed(difficulty.value)
+        const fallback = randomSeed(difficulty.value)
+        puzzle.value   = fallback
+        solution.value = deriveSolution(fallback)
       } catch {
         error.value = "We couldn't load your puzzle. Please refresh the page."
       }
@@ -85,5 +116,5 @@ export const useSudokuStore = defineStore('sudoku', () => {
     })
   }
 
-  return { puzzle, userGrid, selectedCell, loading, error, difficulty, setCell, generatePuzzle }
+  return { puzzle, solution, userGrid, selectedCell, loading, error, difficulty, isSolved, setCell, generatePuzzle }
 })

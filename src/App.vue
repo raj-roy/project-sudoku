@@ -2,17 +2,19 @@
 import { onMounted } from 'vue'
 import SudokuGrid from './components/SudokuGrid.vue'
 import DifficultySelector from './components/DifficultySelector.vue'
+import SuccessModal from './components/SuccessModal.vue'
 import { useSudokuStore } from './stores/sudokuStore'
 import { storeToRefs } from 'pinia'
 
 const store = useSudokuStore()
-const { loading, error, puzzle } = storeToRefs(store)
+const { loading, error, puzzle, isSolved } = storeToRefs(store)
 const printPuzzle = () => window.print()
 onMounted(() => store.generatePuzzle())
 </script>
 
 <template>
   <main class="min-h-screen flex items-center justify-center bg-gray-100">
+    <SuccessModal v-if="isSolved" />
     <div class="flex flex-col items-center gap-6 p-6">
 
       <h1 class="screen-only text-3xl font-bold tracking-widest uppercase text-gray-800">
