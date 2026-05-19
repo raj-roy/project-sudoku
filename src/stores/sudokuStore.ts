@@ -47,8 +47,7 @@ export const useSudokuStore = defineStore('sudoku', () => {
 
   const mistakeLimit = computed(() => getDifficultyStrategy(difficulty.value).mistakeLimit)
   const isGameOver   = computed(() =>
-    mistakeLimit.value !== null &&
-    (mistakeLimit.value > 0 ? mistakes.value >= mistakeLimit.value : mistakes.value > 0)
+    mistakeLimit.value !== null && mistakes.value > mistakeLimit.value
   )
 
   function clearPuzzle() {

@@ -2,7 +2,7 @@ import type { IDifficultyStrategy, Difficulty, DifficultyMeta } from '../types/s
 
 class BabyDifficulty implements IDifficultyStrategy {
   readonly clueCount    = 52
-  readonly mistakeLimit = null   // no counter shown
+  readonly mistakeLimit = 20   //babies are learning, so we give them a lot of clues and a high mistake limit!
 }
 class KidDifficulty implements IDifficultyStrategy {
   readonly clueCount    = 45
@@ -18,7 +18,7 @@ class AdultDifficulty implements IDifficultyStrategy {
 }
 class EinsteinDifficulty implements IDifficultyStrategy {
   readonly clueCount    = 24
-  readonly mistakeLimit = 0   // any wrong entry = immediate game over
+  readonly mistakeLimit = 1   // Even the greaterst minds make mistakes, but only one!
 }
 
 const strategies: Record<Difficulty, IDifficultyStrategy> = {
@@ -34,9 +34,9 @@ export function getDifficultyStrategy(d: Difficulty): IDifficultyStrategy {
 }
 
 export const DIFFICULTIES: DifficultyMeta[] = [
-  { value: 'baby',     label: 'Baby',     sublabel: 'Very Easy', clueMin: 50, clueMax: 55, mistakeLimit: null },
+  { value: 'baby',     label: 'Baby',     sublabel: 'Very Easy', clueMin: 50, clueMax: 55, mistakeLimit: 20 },
   { value: 'kid',      label: 'Kid',      sublabel: 'Easy',      clueMin: 41, clueMax: 49, mistakeLimit: 10   },
   { value: 'teen',     label: 'Teen',     sublabel: 'Medium',    clueMin: 32, clueMax: 40, mistakeLimit: 5    },
   { value: 'adult',    label: 'Adult',    sublabel: 'Hard',      clueMin: 24, clueMax: 31, mistakeLimit: 3    },
-  { value: 'einstein', label: 'Einstein', sublabel: 'Very Hard', clueMin: 22, clueMax: 28, mistakeLimit: 0    },
+  { value: 'einstein', label: 'Einstein', sublabel: 'Very Hard', clueMin: 22, clueMax: 28, mistakeLimit: 1    },
 ]
