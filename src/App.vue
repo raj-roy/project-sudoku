@@ -9,7 +9,7 @@ import { useSudokuStore } from './stores/sudokuStore'
 import { storeToRefs } from 'pinia'
 
 const store = useSudokuStore()
-const { loading, error, puzzle, isSolved, isGameOver, gameOverVisible } = storeToRefs(store)
+const { loading, error, puzzle, isSolved, gameOverVisible } = storeToRefs(store)
 const printPuzzle = () => window.print()
 onMounted(() => store.generatePuzzle())
 </script>
