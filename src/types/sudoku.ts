@@ -1,18 +1,27 @@
 export type Board = number[][]
 export type UserGrid = (number | null)[][]
 
+export type CellStatus = 'empty' | 'pending' | 'correct' | 'incorrect' | 'revealed'
+
+export interface CellEntry {
+  value: number | null
+  status: CellStatus
+}
+
 export type Difficulty = 'baby' | 'kid' | 'teen' | 'adult' | 'einstein'
 
 export interface DifficultyMeta {
   value: Difficulty
-  label: string        // e.g. "Baby"
-  sublabel: string     // e.g. "Very Easy"
+  label: string
+  sublabel: string
   clueMin: number
   clueMax: number
+  mistakeLimit: number | null
 }
 
 export interface IDifficultyStrategy {
   readonly clueCount: number
+  readonly mistakeLimit: number | null  // null = Baby (no limit shown)
 }
 
 export interface IPuzzleGenerator {

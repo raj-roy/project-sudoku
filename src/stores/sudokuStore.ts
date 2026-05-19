@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, watch, computed } from 'vue'
-import type { Board, Difficulty, PuzzleResult, UserGrid } from '../types/sudoku'
+import type { Board, CellEntry, Difficulty, PuzzleResult } from '../types/sudoku'
 import { SudokuSolver } from '../engine/SudokuSolver'
 import rawSeedBank from '../data/seedBank.json'
+import { getDifficultyStrategy } from '../engine/difficulty'
 
 const WORKER_TIMEOUT_MS = 2000
 
@@ -19,7 +20,6 @@ function randomSeed(difficulty: Difficulty): Board {
   return pool[Math.floor(Math.random() * pool.length)] as Board
 }
 
-/** Solve a puzzle once to get its canonical solution (used for seed bank fallbacks only). */
 function deriveSolution(puzzle: Board): Board {
   const solver = new SudokuSolver()
   const grid = puzzle.map(r => [...r])
@@ -27,39 +27,97 @@ function deriveSolution(puzzle: Board): Board {
   return grid
 }
 
-function emptyUserGrid(): UserGrid {
-  return Array.from({ length: 9 }, () => Array(9).fill(null))
+function emptyCellGrid(): CellEntry[][] {
+  return Array.from({ length: 9 }, () =>
+    Array.from({ length: 9 }, (): CellEntry => ({ value: null, status: 'empty' }))
+  )
 }
 
 export const useSudokuStore = defineStore('sudoku', () => {
   const puzzle       = ref<Board | null>(null)
   const solution     = ref<Board | null>(null)
-  const userGrid     = ref<UserGrid>(emptyUserGrid())
+  const cellGrid     = ref<CellEntry[][]>(emptyCellGrid())
   const selectedCell = ref<[number, number] | null>(null)
   const loading      = ref(false)
   const error        = ref<string | null>(null)
   const difficulty   = ref<Difficulty>('baby')
-  const solved       = ref(false)
+  const solved              = ref(false)
+  const mistakes            = ref(0)
+  const gameOverVisible     = ref(false)
 
-  // Reset user state whenever a new puzzle is loaded
+  const mistakeLimit = computed(() => getDifficultyStrategy(difficulty.value).mistakeLimit)
+  const isGameOver   = computed(() =>
+    mistakeLimit.value !== null && mistakes.value > mistakeLimit.value
+  )
+
+  function clearPuzzle() {
+    puzzle.value = null
+    solution.value = null
+    cellGrid.value = emptyCellGrid()
+    gameOverVisible.value = false
+    mistakes.value = 0
+    solved.value = false
+  }
+
   watch(puzzle, () => {
-    userGrid.value = emptyUserGrid()
-    solved.value   = false
+    cellGrid.value           = emptyCellGrid()
+    solved.value             = false
+    mistakes.value           = 0
+    gameOverVisible.value    = false
   })
 
-  function setCell(row: number, col: number, value: number | null): void {
-    if (puzzle.value?.[row][col] !== 0) return
-    userGrid.value[row][col] = value
+  function isClue(row: number, col: number): boolean {
+    return (puzzle.value?.[row][col] ?? 0) !== 0
+  }
+
+  /** Write a digit as pending — no validation yet. */
+  function setPending(row: number, col: number, value: number | null): void {
+    if (isClue(row, col) || isGameOver.value || solved.value) return
+    cellGrid.value[row][col] = {
+      value,
+      status: value === null ? 'empty' : 'pending',
+    }
+  }
+
+  /** Commit the current pending value — validate against solution. */
+  function commitCell(row: number, col: number): void {
+    if (isClue(row, col) || isGameOver.value || solved.value) return
+    const entry = cellGrid.value[row][col]
+    if (entry.status !== 'pending') return
+
+    const expected = solution.value?.[row][col] ?? null
+    const isCorrect = entry.value === expected
+    cellGrid.value[row][col] = {
+      value: entry.value,
+      status: isCorrect ? 'correct' : 'incorrect',
+    }
+    if (!isCorrect) {
+      mistakes.value++
+      if (isGameOver.value) {
+        revealSolution()
+        setTimeout(() => { gameOverVisible.value = true }, 400)
+      }
+    }
     checkCompletion()
+  }
+
+  function revealSolution(): void {
+    if (!solution.value) return
+    for (let r = 0; r < 9; r++)
+      for (let c = 0; c < 9; c++) {
+        if (isClue(r, c)) continue
+        const entry = cellGrid.value[r][c]
+        if (entry.status === 'correct') continue   // keep user's correct entries
+        cellGrid.value[r][c] = { value: solution.value[r][c], status: 'revealed' }
+      }
   }
 
   function checkCompletion(): void {
     if (!puzzle.value || !solution.value || solved.value) return
     for (let r = 0; r < 9; r++)
       for (let c = 0; c < 9; c++) {
-        const expected = solution.value[r][c]
-        const actual   = puzzle.value[r][c] !== 0 ? puzzle.value[r][c] : userGrid.value[r][c]
-        if (actual !== expected) return   // not complete or incorrect
+        if (isClue(r, c)) continue
+        if (cellGrid.value[r][c].status !== 'correct') return
       }
     solved.value = true
   }
@@ -116,5 +174,10 @@ export const useSudokuStore = defineStore('sudoku', () => {
     })
   }
 
-  return { puzzle, solution, userGrid, selectedCell, loading, error, difficulty, isSolved, setCell, generatePuzzle }
+  return {
+    puzzle, solution, cellGrid, selectedCell,
+    loading, error, difficulty, isSolved, mistakes, mistakeLimit, isGameOver,
+    gameOverVisible, clearPuzzle,
+    setPending, commitCell, generatePuzzle,
+  }
 })
